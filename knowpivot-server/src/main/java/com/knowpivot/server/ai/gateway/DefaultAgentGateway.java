@@ -1,0 +1,72 @@
+package com.knowpivot.server.ai.gateway;
+
+import com.knowpivot.server.ai.client.PythonAgentClient;
+import com.knowpivot.server.ai.model.*;
+import com.knowpivot.server.ai.strategy.ModelStrategy;
+import com.knowpivot.server.domain.repository.PromptTemplateRepository;
+import com.knowpivot.server.infrastructure.exception.BusinessException;
+import com.knowpivot.server.infrastructure.common.ResultCode;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 默认 AI Agent 网关实现
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DefaultAgentGateway implements AgentGateway {
+
+    private final PythonAgentClient pythonAgentClient;
+    private final ModelStrategy modelStrategy;
+    private final PromptTemplateRepository promptTemplateRepository;
+
+    @Override
+    public Flux<AgentResponse> chat(AgentContext context, String query) {
+        try {
+            // 1. 加载 Prompt 模板
+            PromptTemplate promptTemplate = loadPromptTemplate();
+
+            // 2. 构建请求
+            Map<String, Object> config = context.getConfig() != null ? new HashMap<>(context.getConfig()) : new HashMap<>();
+            config.put("model", modelStrategy.getModelCode());
+
+            AgentRunRequest request = AgentRunRequest.builder()
+                    .sessionId(String.valueOf(context.getConversationId()))
+                    .query(query)
+                    .history(context.getHistory())
+                    .config(config)
+                    .indexName(context.getIndexName())
+                    .build();
+
+            log.info("Calling AI Agent: session={}, model={}", request.getSessionId(), modelStrategy.getModelCode());
+
+            // 3. 调用 Python 服务
+            return pythonAgentClient.runAgent(request)
+                    .doOnError(e -> log.error("AI Agent call failed", e));
+
+        } catch (Exception e) {
+            log.error("AgentGateway error", e);
+            return Flux.error(new BusinessException(ResultCode.MODEL_SERVICE_UNAVAILABLE));
+        }
+    }
+
+    private PromptTemplate loadPromptTemplate() {
+        com.knowpivot.server.domain.entity.PromptTemplate template =
+                promptTemplateRepository.findByCode("SYSTEM_PROMPT");
+        if (template != null) {
+            return PromptTemplate.builder()
+                    .systemPrompt(template.getContent())
+                    .build();
+        }
+        // 默认 Prompt
+        return PromptTemplate.builder()
+                .systemPrompt("你是一个智能知识库助手，请基于提供的文档内容回答用户问题。")
+                .build();
+    }
+}

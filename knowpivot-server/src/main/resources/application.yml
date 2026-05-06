@@ -1,0 +1,118 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: knowpivot-server
+
+  # ==================== MySQL ====================
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/knowpivot?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+
+  # ==================== Redis ====================
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  # ==================== Kafka ====================
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: document-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+  # ==================== Jackson ====================
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  
+  # ==================== File Upload ====================
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+# ==================== MyBatis-Plus ====================
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.knowpivot.server.infrastructure.persistence.po
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      table-prefix: t_
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# ==================== Sa-Token ====================
+sa-token:
+  token-name: Authorization
+  token-prefix: Bearer
+  timeout: 7200
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
+
+# ==================== MinIO ====================
+minio:
+  endpoint: http://localhost:9000
+  access-key: admin
+  secret-key: Admin@123456
+  bucket-name: knowpivot
+
+# ==================== AI Gateway ====================
+ai:
+  gateway:
+    base-url: http://localhost:8000
+    api-key: your-api-key-here
+    timeout: 60000
+
+# ==================== Custom Config ====================
+knowpivot:
+  # Default token quota for new users
+  default-token-quota: 10000
+  # Snowflake worker ID
+  snowflake:
+    worker-id: 1
+    datacenter-id: 1
+  # Redis Vector Store
+  vector:
+    dimension: 1536
+    distance-metric: COSINE
+
+# ==================== Kafka Topics ====================
+kafka:
+  topic:
+    document-parsing: document-parsing
+
+# ==================== Logging ====================
+logging:
+  level:
+    com.knowpivot.server: debug
+    com.baomidou.mybatisplus: debug
