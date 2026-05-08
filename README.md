@@ -8,6 +8,8 @@
 
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.13-brightgreen)](https://spring.io/projects/spring-boot)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4fc08d)](https://vuejs.org/)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688)](https://fastapi.tiangolo.com/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178c6)](https://www.typescriptlang.org/)
 [![Java](https://img.shields.io/badge/Java-17-ED8B00)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](#)
@@ -72,6 +74,37 @@
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+### AI Agent — knowpivot-agent
+
+| 层级 | 技术 |
+|------|------|
+| **框架** | FastAPI 0.136 |
+| **语言** | Python 3.13 |
+| **包管理** | uv |
+| **LLM** | OpenAI SDK（兼容接口） |
+| **配置** | pydantic-settings |
+| **协议** | SSE 流式输出 |
+
+</td>
+<td width="50%">
+
+### 文档解析 — knowpivot-task
+
+| 层级 | 技术 |
+|------|------|
+| **语言** | Python 3.13 |
+| **包管理** | uv |
+| **消息消费** | kafka-python |
+| **文件解析** | pypdf / python-docx |
+| **向量存储** | Redis（redis-py） |
+| **对象存储** | MinIO |
+| **文本分块** | langchain-text-splitters |
+
+</td>
+</tr>
 </table>
 
 ---
@@ -106,6 +139,20 @@ KnowPivot/
 │   │   └── views/                  # 页面视图（5 个）
 │   ├── package.json
 │   └── vite.config.ts
+│
+├── knowpivot-agent/                # AI Agent 服务（Python + FastAPI）
+│   ├── api/v1/                     # 路由 — SSE 流式对话接口
+│   ├── schema/                     # Pydantic 请求/响应模型
+│   ├── infrastructure/             # 配置管理（OpenAI / 环境变量）
+│   ├── main.py                     # FastAPI 入口（端口 8000）
+│   └── pyproject.toml              # uv 项目配置
+│
+├── knowpivot-task/                 # 文档解析 Worker（Python + Kafka）
+│   ├── task/
+│   │   ├── core/document/          # 核心逻辑 — 文本提取（PDF/DOCX/TXT）
+│   │   └── infrastructure/         # 基础设施 — Kafka / MinIO / Redis 客户端
+│   ├── main.py                     # 入口 — Kafka 消费 → MinIO 下载 → 文本解析
+│   └── pyproject.toml              # uv 项目配置
 │
 ├── ai-op/                          # 项目规划与 AI 提示词文档
 │   ├── 0.Project-Background.md     # 项目背景与市场分析
@@ -222,6 +269,7 @@ KnowPivot/
 | **对话** | POST | `/api/v1/conversations` | 创建会话 |
 | | POST | `/api/v1/chat/messages` | 发送消息（SSE 流式响应） |
 | | GET | `/api/v1/conversations/{id}/messages` | 历史消息（分页） |
+| **Agent** | POST | `/api/v1/agent/run` | 运行 AI Agent（SSE 流式，Python 服务） |
 
 ### SSE 流式事件类型
 
@@ -256,6 +304,8 @@ KnowPivot/
 | JDK | 17+ | 后端运行 |
 | Maven | 3.9+ | 后端构建（项目内置 Wrapper，可免安装） |
 | Node.js | ^20.19 或 >=22.12 | 前端运行 |
+| Python | 3.13+ | AI Agent / 文档解析服务 |
+| uv | 最新版 | Python 包管理 |
 | MySQL | 8.0+ | 主数据库 |
 | Redis Stack | 7.0+ | 缓存 + RediSearch 向量检索 |
 | Apache Kafka | 3.0+ | 文档解析异步消息 |
@@ -301,7 +351,37 @@ cd knowpivot-server
 ./mvnw spring-boot:run
 ```
 
-### 5. 启动前端
+### 5. 启动 AI Agent 服务
+
+```bash
+cd knowpivot-agent
+
+# 安装依赖
+uv sync
+
+# 复制并配置环境变量
+cp .env.example .env  # 填入 OPENAI_API_KEY 等
+
+# 启动服务（默认端口 8000）
+uv run python main.py
+```
+
+### 6. 启动文档解析 Worker
+
+```bash
+cd knowpivot-task
+
+# 安装依赖
+uv sync
+
+# 复制并配置环境变量
+cp .env.example .env  # 填入 MINIO_ACCESS_KEY 等
+
+# 启动 Kafka 消费者
+uv run python main.py
+```
+
+### 7. 启动前端
 
 ```bash
 cd knowpivot-web
@@ -315,7 +395,7 @@ npm run dev
 
 前端开发服务器已配置代理，`/api` 请求会自动转发到 `http://localhost:8080`。
 
-### 6. 访问应用
+### 8. 访问应用
 
 打开浏览器访问 http://localhost:5173，使用默认管理员账号登录：
 
@@ -350,6 +430,26 @@ npm run build        # 类型检查 + 生产构建
 npm run type-check   # TypeScript 类型检查
 npm run build-only   # 仅生产构建（不检查类型）
 npm run preview      # 预览生产构建
+```
+
+### AI Agent 服务
+
+```bash
+cd knowpivot-agent
+
+uv sync              # 安装依赖
+uv run python main.py  # 启动服务（端口 8000）
+uv run pytest        # 运行测试
+```
+
+### 文档解析 Worker
+
+```bash
+cd knowpivot-task
+
+uv sync              # 安装依赖
+uv run python main.py  # 启动 Kafka 消费者
+uv run pytest        # 运行测试
 ```
 
 ---
@@ -398,6 +498,25 @@ npm run preview      # 预览生产构建
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `VITE_API_BASE_URL` | `http://localhost:8080` | API 服务地址 |
+
+### AI Agent — .env
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `OPENAI_API_KEY` | — | OpenAI API Key |
+| `OPENAI_BASE_URL` | — | OpenAI 兼容接口地址（支持自定义） |
+| `OPENAI_MODEL` | `gpt-4o` | 使用的模型名称 |
+
+### 文档解析 Worker — .env
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `KAFKA_BROKER` | `localhost:9092` | Kafka 地址 |
+| `REDIS_HOST` | `localhost` | Redis 地址 |
+| `REDIS_PORT` | `6379` | Redis 端口 |
+| `MINIO_ENDPOINT` | `localhost:9000` | MinIO 地址 |
+| `MINIO_ACCESS_KEY` | — | MinIO Access Key |
+| `MINIO_SECRET_KEY` | — | MinIO Secret Key |
 
 ---
 
@@ -448,7 +567,10 @@ docs: 更新API接口文档
 - [x] Redis 向量存储与相似度检索
 - [x] SSE 流式对话接口
 - [x] 前端完整 UI 实现（三栏布局 / 5 个页面）
-- [ ] Python AI Agent 服务接入
+- [x] Python AI Agent 服务（FastAPI + SSE 流式）
+- [x] 文档解析 Worker（Kafka 消费 + 多格式文本提取）
+- [ ] AI Agent 接入真实 LLM（OpenAI / 兼容接口）
+- [ ] 文档分块 + 向量化 + Redis 索引完整链路
 - [ ] 前后端真实 API 联调
 - [ ] Docker 容器化部署
 - [ ] CI/CD 自动化流水线
