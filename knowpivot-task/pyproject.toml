@@ -1,0 +1,22 @@
+[project]
+name = "knowpivot-task"
+version = "0.1.0"
+description = "KnowPivot background document parsing worker"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "kafka-python>=2.1.0",
+    "minio>=7.2.18",
+    "redis>=6.4.0",
+    "pypdf>=6.0.0",
+    "python-docx>=1.2.0",
+    "langchain-text-splitters>=0.3.11",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.9.1",
+    "python-dotenv>=1.2.2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
