@@ -1,4 +1,4 @@
-import http from '@/utils/request'
+import http from "@/utils/request";
 import type {
   KBCreateReq,
   KBCreateRes,
@@ -7,15 +7,15 @@ import type {
   PageData,
   DocItem,
   DocUploadRes,
-} from '@/types/api'
+} from "@/types/api";
 
 export const knowledgeApi = {
   // Knowledge Base CRUD
   create: (data: KBCreateReq) =>
-    http.post<never, KBCreateRes>('/api/v1/knowledge-bases', data),
+    http.post<never, KBCreateRes>("/api/v1/knowledge-bases", data),
 
   getList: (params: PageParams) =>
-    http.get<never, PageData<KBItem>>('/api/v1/knowledge-bases', { params }),
+    http.get<never, PageData<KBItem>>("/api/v1/knowledge-bases", { params }),
 
   update: (kbId: string, data: Partial<KBCreateReq>) =>
     http.put<never, void>(`/api/v1/knowledge-bases/${kbId}`, data),
@@ -28,7 +28,7 @@ export const knowledgeApi = {
     http.post<never, DocUploadRes>(
       `/api/v1/knowledge-bases/${kbId}/documents/upload`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
+      { headers: { "Content-Type": "multipart/form-data" } },
     ),
 
   getDocList: (kbId: string, params: PageParams & { status?: number }) =>
@@ -37,6 +37,8 @@ export const knowledgeApi = {
       { params },
     ),
 
-  deleteDoc: (docId: string) =>
-    http.delete<never, void>(`/api/v1/documents/${docId}`),
-}
+  deleteDoc: (kbId: string, docId: string) =>
+    http.delete<never, void>(
+      `/api/v1/knowledge-bases/${kbId}/documents/${docId}`,
+    ),
+};

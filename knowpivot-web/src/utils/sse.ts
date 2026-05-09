@@ -22,6 +22,7 @@ export function sendSSEMessage(
   ;(async () => {
     try {
       const response = await fetch('/api/v1/chat/messages', {
+
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,6 +43,7 @@ export function sendSSEMessage(
 
       const decoder = new TextDecoder()
       let buffer = ''
+      let currentEvent = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -51,35 +53,43 @@ export function sendSSEMessage(
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
-        let currentEvent = ''
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (!line) {
+            currentEvent = ''
+            continue
+          }
 
-        for (const line of lines) {
+          // Standard SSE: "event: message"
           if (line.startsWith('event:')) {
             currentEvent = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            const dataStr = line.slice(5).trim()
+            continue
+          }
+
+          // Standard SSE: "data: {...}"
+          if (line.startsWith('data:')) {
+            let dataStr = line.slice(5)
+
+            // Backend wraps lines: "data:event: null" or "data:data: {...}"
+            // Detect inner event:/data: and unwrap
+            if (dataStr.startsWith('event:')) {
+              currentEvent = dataStr.slice(6).trim()
+              continue
+            }
+            if (dataStr.startsWith('data:')) {
+              dataStr = dataStr.slice(5)
+            }
+
+            dataStr = dataStr.trim()
             if (!dataStr) continue
 
             try {
               const data = JSON.parse(dataStr)
-
-              switch (currentEvent) {
-                case 'message':
-                  callbacks.onMessage(data.delta)
-                  break
-                case 'references':
-                  callbacks.onReferences(data.sources)
-                  break
-                case 'done':
-                  callbacks.onDone(data as SSEDone)
-                  break
-                default:
-                  // Unknown event, ignore
-                  break
-              }
+              handleEvent(currentEvent, data, callbacks)
             } catch {
               // Skip malformed JSON
             }
+            continue
           }
         }
       }
@@ -91,4 +101,24 @@ export function sendSSEMessage(
   })()
 
   return controller
+}
+
+function handleEvent(
+  event: string,
+  data: Record<string, unknown>,
+  callbacks: SSECallbacks,
+) {
+  switch (event) {
+    case 'message':
+      callbacks.onMessage(data.delta as string)
+      break
+    case 'references':
+      callbacks.onReferences(data.sources as SSEReferenceSource[])
+      break
+    case 'done':
+      callbacks.onDone(data as unknown as SSEDone)
+      break
+    default:
+      break
+  }
 }
