@@ -1,7 +1,6 @@
 package com.knowpivot.server.infrastructure.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -33,7 +32,7 @@ public class EmbeddingClient {
     }
 
     /**
-     * 将单条文本转为向量
+     * 将单条文本转为向量(用户问题转向量)
      */
     public float[] embed(String text) {
         return embed(new String[]{text})[0];
