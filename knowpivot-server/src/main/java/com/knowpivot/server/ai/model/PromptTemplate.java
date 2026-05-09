@@ -29,7 +29,7 @@ public class PromptTemplate {
         String result = userPromptTemplate;
         Pattern pattern = Pattern.compile("\\{(\\w+)}");
         Matcher matcher = pattern.matcher(result);
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (matcher.find()) {
             String key = matcher.group(1);
             Object value = context.getOrDefault(key, "");

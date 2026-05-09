@@ -105,6 +105,11 @@ knowpivot:
   vector:
     dimension: 1536
     distance-metric: COSINE
+  # Embedding Service (OpenAI 兼容)
+  embedding:
+    base-url: http://localhost:8000
+    api-key:
+    model: text-embedding-3-small
 
 # ==================== Kafka Topics ====================
 kafka:

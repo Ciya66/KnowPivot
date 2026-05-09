@@ -20,6 +20,7 @@ public class MessagePO {
 
     private Integer tokenCount;
 
+    @TableField("`references`")
     private String references;
 
     private Integer feedback;

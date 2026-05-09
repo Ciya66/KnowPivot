@@ -105,19 +105,29 @@ public class ChatApplicationService {
         conversationCache.appendMessage(conversation.getId(),
                 new AgentContext.ChatMessage("user", request.getContent()));
 
-        // 3. 构建 AI 上下文
+        // 3. 预扣 Token（按消息长度估算），done 事件到达后按实际值调整
+        long estimatedTokens = Math.max(100, request.getContent().length() * 2);
+        tokenDomainService.deductToken(userId, estimatedTokens, conversation.getId().toString());
+
+        // 4. 构建 AI 上下文
         AgentContext context = buildAgentContext(conversation);
 
-        // 4. 调用 AI 网关
+        // 5. 调用 AI 网关
         return agentGateway.chat(context, request.getContent())
                 .doOnNext(response -> {
-                    // 处理完成事件
                     if ("done".equals(response.getEvent())) {
-                        handleDoneEvent(conversation, response, userId);
+                        handleDoneEvent(conversation, response, userId, estimatedTokens);
                     }
                 })
                 .doOnError(e -> {
-                    log.error("Chat error for conversation: {}", conversation.getId(), e);
+                    log.error("AI 调用失败，回退预扣 Token: conversation={}, estimatedTokens={}",
+                            conversation.getId(), estimatedTokens, e);
+                    try {
+                        tokenDomainService.refundToken(userId, estimatedTokens,
+                                conversation.getId().toString());
+                    } catch (Exception refundEx) {
+                        log.error("Token 回退失败: userId={}", userId, refundEx);
+                    }
                 });
     }
 
@@ -191,31 +201,43 @@ public class ChatApplicationService {
                 .build();
     }
 
-    private void handleDoneEvent(Conversation conversation, AgentResponse response, Long userId) {
+    private void handleDoneEvent(Conversation conversation, AgentResponse response,
+                                  Long userId, long estimatedTokens) {
         try {
             // 保存 AI 回复
             Message aiMessage = Message.builder()
                     .id(idGenerator.nextId())
                     .conversationId(conversation.getId())
                     .role(MessageRole.ASSISTANT)
-                    .content("")  // 流式拼接后存储
+                    .content("")
                     .tokenCount(response.getTokenCount() != null ? response.getTokenCount() : 0)
                     .createdAt(LocalDateTime.now())
                     .build();
             messageRepository.save(aiMessage);
             conversation.addMessage(aiMessage);
 
-            // 缓存 AI 回复到 Redis
             conversationCache.appendMessage(conversation.getId(),
                     new AgentContext.ChatMessage("assistant", aiMessage.getContent()));
             conversationRepository.updateById(conversation);
 
-            // 扣减 Token
-            if (response.getTokenCount() != null && response.getTokenCount() > 0) {
-                tokenDomainService.deductToken(userId, response.getTokenCount(), conversation.getId().toString());
+            // 调整 Token：实际消耗与预扣的差额
+            long actualTokens = response.getTokenCount() != null ? response.getTokenCount() : 0;
+            long diff = actualTokens - estimatedTokens;
+            if (diff > 0) {
+                // 实际 > 预估：补扣差额
+                tokenDomainService.deductToken(userId, diff, conversation.getId().toString());
+            } else if (diff < 0) {
+                // 实际 < 预估：退还差额
+                tokenDomainService.refundToken(userId, -diff, conversation.getId().toString());
             }
         } catch (Exception e) {
-            log.error("Handle done event failed", e);
+            // 保存/调整失败：回退全部预扣 Token
+            log.error("handleDoneEvent 失败，回退预扣 Token: conversationId={}", conversation.getId(), e);
+            try {
+                tokenDomainService.refundToken(userId, estimatedTokens, conversation.getId().toString());
+            } catch (Exception refundEx) {
+                log.error("Token 回退失败: userId={}", userId, refundEx);
+            }
         }
     }
 }
