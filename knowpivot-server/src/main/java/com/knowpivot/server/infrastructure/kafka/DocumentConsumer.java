@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Kafka 消费者 — 监听文档解析消息
- *
+ * <p>
  * 收到消息后，更新文档状态为"解析中"。
  * 实际的文档解析、向量化由 Python AI 服务完成。
  * Python 端消费同一 topic 后进行 Embedding 并写入 Redis 向量索引。
@@ -44,8 +44,9 @@ public class DocumentConsumer {
             log.info("文档状态已更新为解析中: docId={}", message.getDocId());
 
             // 实际的解析/向量化由 Python 端消费同一 topic 完成
-            // Python 端流程：读取 MinIO 文件 → 文本切片 → Embedding → 写入 Redis 向量索引
-            // 解析完成后 Python 回调 Java 端更新状态为 INDEXED
+            // Python 端流程：读取 MinIO 文件 → 文本切片 → Embedding → HTTP POST 到 Java
+            // Java 端收到回调后：存储向量到 Redis、保存切片记录、更新状态为 INDEXED
+            // 参见 IndexingCallbackController.indexingCallback()
 
         } catch (Exception e) {
             log.error("处理文档解析消息异常: key={}", record.key(), e);

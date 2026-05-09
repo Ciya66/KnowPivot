@@ -2,6 +2,7 @@ package com.knowpivot.server.application.service;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.knowpivot.server.domain.entity.Document;
+import com.knowpivot.server.domain.entity.DocumentSegment;
 import com.knowpivot.server.domain.entity.KnowledgeBase;
 import com.knowpivot.server.domain.enums.DocumentStatus;
 import com.knowpivot.server.domain.repository.DocumentRepository;
@@ -9,18 +10,23 @@ import com.knowpivot.server.domain.repository.DocumentSegmentRepository;
 import com.knowpivot.server.domain.service.DocumentDomainService;
 import com.knowpivot.server.domain.service.KnowledgeDomainService;
 import com.knowpivot.server.infrastructure.common.PageResult;
+import com.knowpivot.server.infrastructure.common.ResultCode;
+import com.knowpivot.server.infrastructure.exception.BusinessException;
 import com.knowpivot.server.infrastructure.kafka.DocumentParsingMessage;
 import com.knowpivot.server.infrastructure.kafka.KafkaProducerService;
 import com.knowpivot.server.infrastructure.minio.MinioStorageClient;
 import com.knowpivot.server.infrastructure.redis.RedisVectorStore;
 import com.knowpivot.server.infrastructure.util.IdGenerator;
+import com.knowpivot.server.interfaces.dto.request.IndexingCallbackRequest;
 import com.knowpivot.server.interfaces.dto.response.DocumentResponse;
+import com.knowpivot.server.interfaces.dto.response.IndexingCallbackResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -125,6 +131,64 @@ public class DocumentApplicationService {
 
         documentRepository.deleteById(docId);
         log.info("文档已删除: docId={}", docId);
+    }
+
+    /**
+     * Python 解析完成回调 — 存储向量到 Redis，保存切片记录到数据库，更新文档状态
+     */
+    @Transactional
+    public IndexingCallbackResponse indexingCallback(IndexingCallbackRequest request) {
+        Document doc = documentDomainService.getDocumentOrThrow(request.getDocId());
+        if (doc.getStatus() != DocumentStatus.PARSING) {
+            throw new BusinessException(ResultCode.BUSINESS_PROCESS_FAILED,
+                    "文档状态不是解析中，无法接收索引回调: docId=" + request.getDocId()
+                            + ", status=" + doc.getStatus());
+        }
+
+        List<RedisVectorStore.VectorData> vectors = new ArrayList<>();
+        List<DocumentSegment> segments = new ArrayList<>();
+
+        for (IndexingCallbackRequest.ChunkData chunk : request.getChunks()) {
+            String vectorId = request.getDocId() + ":" +
+                    String.format("%06d", chunk.getPageNum() != null ? chunk.getPageNum() : 0);
+
+            float[] embeddingArray = new float[chunk.getEmbedding().size()];
+            for (int i = 0; i < chunk.getEmbedding().size(); i++) {
+                embeddingArray[i] = chunk.getEmbedding().get(i);
+            }
+
+            vectors.add(RedisVectorStore.VectorData.builder()
+                    .vectorId(vectorId)
+                    .content(chunk.getContent())
+                    .kbId(String.valueOf(request.getKbId()))
+                    .docId(String.valueOf(request.getDocId()))
+                    .pageNum(chunk.getPageNum())
+                    .embedding(embeddingArray)
+                    .build());
+
+            segments.add(DocumentSegment.builder()
+                    .id(idGenerator.nextId())
+                    .docId(request.getDocId())
+                    .kbId(request.getKbId())
+                    .vectorId(vectorId)
+                    .content(chunk.getContent())
+                    .pageNum(chunk.getPageNum())
+                    .build());
+        }
+
+        redisVectorStore.storeVectors(request.getIndexName(), vectors);
+        documentSegmentRepository.saveBatch(segments);
+
+        doc.markAsIndexed(request.getChunks().size());
+        documentRepository.updateById(doc);
+
+        log.info("文档索引完成: docId={}, chunks={}", request.getDocId(), request.getChunks().size());
+
+        return IndexingCallbackResponse.builder()
+                .docId(request.getDocId())
+                .chunkCount(request.getChunks().size())
+                .status("INDEXED")
+                .build();
     }
 
     private DocumentResponse toResponse(Document doc) {
