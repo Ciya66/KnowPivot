@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = ""
     MINIO_SECRET_KEY: str = ""
-    EMBEDDING_BASE_URL: str = "http://localhost:8000/v1"
+    EMBEDDING_BASE_URL: str = "http://localhost:8001/v1"
     EMBEDDING_API_KEY: str = ""
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSION: int = 1536
