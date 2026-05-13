@@ -4,6 +4,7 @@ import com.knowpivot.server.ai.client.PythonAgentClient;
 import com.knowpivot.server.ai.model.*;
 import com.knowpivot.server.ai.strategy.ModelStrategy;
 import com.knowpivot.server.domain.repository.PromptTemplateRepository;
+import com.knowpivot.server.domain.service.KnowledgeSearchService;
 import com.knowpivot.server.infrastructure.exception.BusinessException;
 import com.knowpivot.server.infrastructure.common.ResultCode;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,6 +28,8 @@ public class DefaultAgentGateway implements AgentGateway {
     private final ModelStrategy modelStrategy;
     private final PromptTemplateRepository promptTemplateRepository;
 
+    private final KnowledgeSearchService knowledgeSearchService;
+
     @Override
     public Flux<AgentResponse> chat(AgentContext context, String query) {
         try {
@@ -36,6 +40,14 @@ public class DefaultAgentGateway implements AgentGateway {
             Map<String, Object> config = context.getConfig() != null ? new HashMap<>(context.getConfig()) : new HashMap<>();
             config.put("model", modelStrategy.getModelCode());
 
+            List<KnowledgeSearchService.SearchHit> hits = knowledgeSearchService.search(
+                    context.getIndexName(),
+                    query,
+                    5,
+                    0.7
+            );
+
+            // TODO 把 hits 构建到 request 中， 发送请求给 Agent
             AgentRunRequest request = AgentRunRequest.builder()
                     .sessionId(String.valueOf(context.getConversationId()))
                     .query(query)
