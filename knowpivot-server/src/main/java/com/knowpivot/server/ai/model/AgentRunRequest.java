@@ -22,4 +22,21 @@ public class AgentRunRequest {
     private List<AgentContext.ChatMessage> history;
     private Map<String, Object> config;
     private String indexName;
+    /**
+     * 向量库中检索到的文档引用
+     */
+    private List<SourceReference> references;
+    private String systemPrompt;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class SourceReference {
+        private String segmentId;
+        private String content;
+        private String docId;
+        private Integer pageNum;
+        private Double similarity;
+    }
 }

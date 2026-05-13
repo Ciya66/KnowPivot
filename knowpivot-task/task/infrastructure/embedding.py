@@ -1,16 +1,22 @@
-from openai import OpenAI
+import httpx
 
 from .config import settings
 
-client = OpenAI(
-    base_url=settings.EMBEDDING_BASE_URL,
-    api_key=settings.EMBEDDING_API_KEY,
-)
-
 
 def get_embeddings(texts: list[str]) -> list[list[float]]:
-    response = client.embeddings.create(
-        model=settings.EMBEDDING_MODEL,
-        input=texts,
+    url = f"{settings.EMBEDDING_BASE_URL}/embeddings"
+
+    headers = {"Content-Type": "application/json"}
+    if settings.EMBEDDING_API_KEY:
+        headers["Authorization"] = f"Bearer {settings.EMBEDDING_API_KEY}"
+
+    response = httpx.post(
+        url,
+        json={"model": settings.EMBEDDING_MODEL, "input": texts},
+        headers=headers,
+        timeout=60.0,
     )
-    return [item.embedding for item in response.data]
+    response.raise_for_status()
+
+    data = response.json()
+    return [item["embedding"] for item in data["data"]]

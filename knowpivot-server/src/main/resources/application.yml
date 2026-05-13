@@ -107,7 +107,7 @@ knowpivot:
     distance-metric: COSINE
   # Embedding Service (OpenAI 兼容)
   embedding:
-    base-url: http://localhost:8000
+    base-url: http://localhost:8001
     api-key:
     model: text-embedding-3-small
 

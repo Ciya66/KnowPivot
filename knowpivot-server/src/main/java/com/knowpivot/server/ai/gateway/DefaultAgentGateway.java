@@ -1,17 +1,23 @@
 package com.knowpivot.server.ai.gateway;
 
 import com.knowpivot.server.ai.client.PythonAgentClient;
-import com.knowpivot.server.ai.model.*;
+import com.knowpivot.server.ai.model.AgentContext;
+import com.knowpivot.server.ai.model.AgentResponse;
+import com.knowpivot.server.ai.model.AgentRunRequest;
+import com.knowpivot.server.ai.model.PromptTemplate;
 import com.knowpivot.server.ai.strategy.ModelStrategy;
 import com.knowpivot.server.domain.repository.PromptTemplateRepository;
-import com.knowpivot.server.infrastructure.exception.BusinessException;
+import com.knowpivot.server.domain.service.KnowledgeSearchService;
 import com.knowpivot.server.infrastructure.common.ResultCode;
+import com.knowpivot.server.infrastructure.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,6 +32,8 @@ public class DefaultAgentGateway implements AgentGateway {
     private final ModelStrategy modelStrategy;
     private final PromptTemplateRepository promptTemplateRepository;
 
+    private final KnowledgeSearchService knowledgeSearchService;
+
     @Override
     public Flux<AgentResponse> chat(AgentContext context, String query) {
         try {
@@ -36,12 +44,33 @@ public class DefaultAgentGateway implements AgentGateway {
             Map<String, Object> config = context.getConfig() != null ? new HashMap<>(context.getConfig()) : new HashMap<>();
             config.put("model", modelStrategy.getModelCode());
 
+            List<AgentRunRequest.SourceReference> references = new ArrayList<>();
+            if (context.getIndexName() != null) {
+                List<KnowledgeSearchService.SearchHit> hits = knowledgeSearchService.search(
+                        context.getIndexName(),
+                        query,
+                        5,
+                        0.7
+                );
+
+                references = hits.stream().map(hit -> AgentRunRequest.SourceReference.builder()
+                        .docId(hit.docId())
+                        .content(hit.content())
+                        .pageNum(hit.pageNum())
+                        .similarity(hit.similarity())
+                        .segmentId(hit.vectorId())
+                        .build()).toList();
+            }
+
+            // 发送 Agent 请求
             AgentRunRequest request = AgentRunRequest.builder()
                     .sessionId(String.valueOf(context.getConversationId()))
                     .query(query)
                     .history(context.getHistory())
                     .config(config)
                     .indexName(context.getIndexName())
+                    .references(references)
+                    .systemPrompt(promptTemplate.getSystemPrompt())
                     .build();
 
             log.info("Calling AI Agent: session={}, model={}", request.getSessionId(), modelStrategy.getModelCode());
