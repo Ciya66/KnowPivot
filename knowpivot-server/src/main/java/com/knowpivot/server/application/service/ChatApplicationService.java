@@ -9,6 +9,7 @@ import com.knowpivot.server.domain.entity.KnowledgeBase;
 import com.knowpivot.server.domain.entity.Message;
 import com.knowpivot.server.domain.enums.MessageRole;
 import com.knowpivot.server.domain.repository.ConversationRepository;
+import com.knowpivot.server.domain.repository.KnowledgeBaseRepository;
 import com.knowpivot.server.domain.repository.MessageRepository;
 import com.knowpivot.server.domain.service.KnowledgeDomainService;
 import com.knowpivot.server.domain.service.TokenDomainService;
@@ -42,6 +43,7 @@ public class ChatApplicationService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final KnowledgeDomainService knowledgeDomainService;
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final TokenDomainService tokenDomainService;
     private final AgentGateway agentGateway;
     private final ConversationCache conversationCache;
@@ -75,7 +77,7 @@ public class ChatApplicationService {
     }
 
     /**
-     * 发送消息并获取流式响应 (SSE)
+     * 发送消息给 Agent 获取流式响应 (SSE)
      */
     public Flux<AgentResponse> sendMessage(SendMessageRequest request) {
         long userId = StpUtil.getLoginIdAsLong();
@@ -194,7 +196,10 @@ public class ChatApplicationService {
     private AgentContext buildAgentContext(Conversation conversation) {
         // 优先从 Redis 缓存加载最近 20 轮历史
         List<AgentContext.ChatMessage> history = conversationCache.getRecentHistory(conversation.getId(), 20);
+        KnowledgeBase kb = knowledgeBaseRepository.findById(conversation.getKbId());
+
         return AgentContext.builder()
+                .indexName(kb != null ? kb.getIndexName() : null)
                 .conversationId(conversation.getId())
                 .kbId(conversation.getKbId())
                 .history(history)
@@ -202,7 +207,7 @@ public class ChatApplicationService {
     }
 
     private void handleDoneEvent(Conversation conversation, AgentResponse response,
-                                  Long userId, long estimatedTokens) {
+                                 Long userId, long estimatedTokens) {
         try {
             // 保存 AI 回复
             Message aiMessage = Message.builder()
