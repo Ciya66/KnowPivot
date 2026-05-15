@@ -27,3 +27,12 @@ class AgentResponse(BaseModel):
 
     # 错误信息
     errorMessage: str | None = None
+
+
+class GenerateTitleResponse(BaseModel):
+    """
+    生成对话标题响应模型
+    """
+    title: str
+    success: bool
+    errorMessage: str | None = None

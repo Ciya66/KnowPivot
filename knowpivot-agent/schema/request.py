@@ -31,3 +31,10 @@ class AgentRunRequest(BaseModel):
     # 向量库中检索到的文档引用
     references: List[SourceReference] | None = None
     systemPrompt: str | None = None
+
+
+class GenerateTitleRequest(BaseModel):
+    """
+    生成对话标题请求模型
+    """
+    userMessage: str
