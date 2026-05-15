@@ -18,6 +18,13 @@ public class IndexingCallbackController {
 
     private final DocumentApplicationService documentApplicationService;
 
+    /**
+     * Python Embedding 消费 kafka 消息之后 的回调
+     * 详见：knowpivot-task\task\infrastructure\server_client.py
+     *
+     * @param request Python 推送的请求
+     * @return
+     */
     @PostMapping("/indexing/callback")
     public Result<IndexingCallbackResponse> indexingCallback(
             @Valid @RequestBody IndexingCallbackRequest request) {

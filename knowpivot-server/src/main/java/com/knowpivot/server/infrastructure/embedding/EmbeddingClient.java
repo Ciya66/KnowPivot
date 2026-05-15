@@ -18,12 +18,15 @@ public class EmbeddingClient {
 
     private final WebClient webClient;
     private final String model;
+    private final int dimensions;
 
     public EmbeddingClient(
             @Value("${knowpivot.embedding.base-url}") String baseUrl,
             @Value("${knowpivot.embedding.api-key:}") String apiKey,
-            @Value("${knowpivot.embedding.model:text-embedding-3-small}") String model) {
+            @Value("${knowpivot.embedding.model:text-embedding-3-small}") String model,
+            @Value("${knowpivot.vector.dimension:1024}") int dimensions) {
         this.model = model;
+        this.dimensions = dimensions;
         WebClient.Builder builder = WebClient.builder().baseUrl(baseUrl);
         if (apiKey != null && !apiKey.isBlank()) {
             builder.defaultHeader("Authorization", "Bearer " + apiKey);
@@ -45,7 +48,7 @@ public class EmbeddingClient {
         JsonNode response = webClient.post()
                 .uri("/v1/embeddings")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("input", texts, "model", model))
+                .bodyValue(Map.of("input", texts, "model", model, "dimensions", dimensions))
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block();
@@ -66,7 +69,19 @@ public class EmbeddingClient {
             result[i] = vec;
         }
 
-        log.debug("Embedding 完成: texts={}, vectors={}", texts.length, result.length);
+        if (result.length > 0) {
+            int actualDim = result[0].length;
+            if (actualDim != dimensions) {
+                log.warn("[RAG-1] Embedding 维度不匹配: 模型返回 {} 维, 期望 {} 维", actualDim, dimensions);
+            }
+            StringBuilder preview = new StringBuilder();
+            for (int k = 0; k < Math.min(5, actualDim); k++) {
+                if (k > 0) preview.append(", ");
+                preview.append(String.format("%.6f", result[0][k]));
+            }
+            log.info("[RAG-1] Embedding 完成: dim={}, byteSize={}, 前5维=[{}]",
+                    actualDim, actualDim * 4, preview);
+        }
         return result;
     }
 }

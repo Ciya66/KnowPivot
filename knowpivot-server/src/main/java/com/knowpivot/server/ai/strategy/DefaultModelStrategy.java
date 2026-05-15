@@ -10,7 +10,7 @@ public class DefaultModelStrategy implements ModelStrategy {
 
     @Override
     public String getModelCode() {
-        return "qwen-plus";
+        return "deepseek-4pro";
     }
 
     @Override

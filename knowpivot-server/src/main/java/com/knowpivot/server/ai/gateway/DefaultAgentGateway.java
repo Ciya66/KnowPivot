@@ -1,10 +1,7 @@
 package com.knowpivot.server.ai.gateway;
 
 import com.knowpivot.server.ai.client.PythonAgentClient;
-import com.knowpivot.server.ai.model.AgentContext;
-import com.knowpivot.server.ai.model.AgentResponse;
-import com.knowpivot.server.ai.model.AgentRunRequest;
-import com.knowpivot.server.ai.model.PromptTemplate;
+import com.knowpivot.server.ai.model.*;
 import com.knowpivot.server.ai.strategy.ModelStrategy;
 import com.knowpivot.server.domain.repository.PromptTemplateRepository;
 import com.knowpivot.server.domain.service.KnowledgeSearchService;
@@ -14,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,20 +44,34 @@ public class DefaultAgentGateway implements AgentGateway {
 
             List<AgentRunRequest.SourceReference> references = new ArrayList<>();
             if (context.getIndexName() != null) {
+                log.info("[RAG] 开始检索: indexName={}, kbId={}", context.getIndexName(), context.getKbId());
                 List<KnowledgeSearchService.SearchHit> hits = knowledgeSearchService.search(
                         context.getIndexName(),
                         query,
                         5,
-                        0.7
+                        0.0
                 );
 
-                references = hits.stream().map(hit -> AgentRunRequest.SourceReference.builder()
-                        .docId(hit.docId())
-                        .content(hit.content())
-                        .pageNum(hit.pageNum())
-                        .similarity(hit.similarity())
-                        .segmentId(hit.vectorId())
-                        .build()).toList();
+                references = hits.stream()
+                        .filter(hit -> {
+                            boolean valid = hit.content() != null && hit.docId() != null && hit.pageNum() != null;
+                            if (!valid) {
+                                log.warn("[RAG] 跳过无效引用: vectorId={}, contentNull={}, docIdNull={}, pageNumNull={}",
+                                        hit.vectorId(), hit.content() == null, hit.docId() == null, hit.pageNum() == null);
+                            }
+                            return valid;
+                        })
+                        .map(hit -> AgentRunRequest.SourceReference.builder()
+                                .docId(hit.docId())
+                                .content(hit.content())
+                                .pageNum(hit.pageNum())
+                                .similarity(hit.similarity())
+                                .segmentId(hit.vectorId())
+                                .build())
+                        .toList();
+                log.info("[RAG] references 构建完成: count={}", references.size());
+            } else {
+                log.info("[RAG] indexName 为空，跳过知识检索");
             }
 
             // 发送 Agent 请求
@@ -73,7 +85,9 @@ public class DefaultAgentGateway implements AgentGateway {
                     .systemPrompt(promptTemplate.getSystemPrompt())
                     .build();
 
-            log.info("Calling AI Agent: session={}, model={}", request.getSessionId(), modelStrategy.getModelCode());
+            log.info("Calling AI Agent: session={}, model={}, references={}, systemPrompt={}",
+                    request.getSessionId(), modelStrategy.getModelCode(), references.size(),
+                    promptTemplate.getSystemPrompt() != null ? promptTemplate.getSystemPrompt().length() + " chars" : "null");
 
             // 3. 调用 Python 服务
             return pythonAgentClient.runAgent(request)
@@ -83,6 +97,28 @@ public class DefaultAgentGateway implements AgentGateway {
             log.error("AgentGateway error", e);
             return Flux.error(new BusinessException(ResultCode.MODEL_SERVICE_UNAVAILABLE));
         }
+    }
+
+    @Override
+    public Mono<String> generateTitle(String userMessage) {
+        GenerateTitleRequest request = GenerateTitleRequest.builder()
+                .userMessage(userMessage)
+                .build();
+
+        return pythonAgentClient.generateTitle(request)
+                .map(response -> {
+                    if (response.isSuccess()) {
+                        log.info("Generated title successfully: {}", response.getTitle());
+                        return response.getTitle();
+                    } else {
+                        log.warn("Failed to generate title, using default. Error: {}", response.getErrorMessage());
+                        return "新对话";
+                    }
+                })
+                .onErrorResume(e -> {
+                    log.error("Generate title failed, using default", e);
+                    return Mono.just("新对话");
+                });
     }
 
     private PromptTemplate loadPromptTemplate() {
