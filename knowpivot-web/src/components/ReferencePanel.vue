@@ -40,6 +40,7 @@ defineEmits<{
         <div class="source-header">
           <el-tag type="primary" size="small" effect="dark" round>{{ i + 1 }}</el-tag>
           <span class="source-name">{{ source.docName }}</span>
+          <span v-if="source.pageNum !== undefined" class="source-page">第 {{ source.pageNum }} 页</span>
         </div>
         <p class="source-content">{{ source.content }}</p>
       </el-card>
@@ -126,12 +127,20 @@ defineEmits<{
 }
 
 .source-name {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.source-page {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
 }
 
 .source-content {

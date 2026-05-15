@@ -10,6 +10,10 @@ const props = defineProps<{
   references?: SSEReferenceSource[]
 }>()
 
+const emit = defineEmits<{
+  'show-references': []
+}>()
+
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
 
@@ -28,7 +32,8 @@ const displayReferences = computed(() => {
   return (props.message.references ?? []).map((r) => ({
     docName: r.docName,
     segmentId: r.docId,
-    content: `第 ${r.pageNum} 页`,
+    content: r.content ?? `第 ${r.pageNum} 页`,
+    pageNum: r.pageNum,
   }))
 })
 </script>
@@ -63,14 +68,10 @@ const displayReferences = computed(() => {
 
       <!-- References -->
       <div v-if="showReferences" class="references">
-        <div class="ref-header">
+        <button class="ref-summary" type="button" @click="emit('show-references')">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3H7L9 5H11V11H3V3Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
-          引用来源
-        </div>
-        <div v-for="(ref, i) in displayReferences" :key="i" class="ref-item">
-          <span class="ref-name">{{ ref.docName }}</span>
-          <span class="ref-segment">{{ ref.content }}</span>
-        </div>
+          <span>引用来源 {{ displayReferences.length }} 条</span>
+        </button>
       </div>
     </div>
   </div>
@@ -173,34 +174,22 @@ const displayReferences = computed(() => {
   gap: var(--space-2);
 }
 
-.ref-header {
-  display: flex;
+.ref-summary {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.ref-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  background: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-}
-
-.ref-name {
-  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-bg);
   color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.ref-segment {
-  color: var(--color-text-tertiary);
+.ref-summary:hover {
+  background: var(--color-primary);
+  color: white;
 }
 
 [data-theme='dark'] .ai-bubble {

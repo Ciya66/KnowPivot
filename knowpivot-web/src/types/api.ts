@@ -103,6 +103,7 @@ export interface Reference {
   docId: string
   docName: string
   pageNum: number
+  content?: string
 }
 
 export interface MessageItem {
@@ -123,6 +124,7 @@ export interface SSEReferenceSource {
   docName: string
   segmentId: string
   content: string
+  pageNum?: number
 }
 
 export interface SSEReferences {

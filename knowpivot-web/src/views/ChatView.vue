@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch, nextTick, ref } from 'vue'
+import { computed, onMounted, watch, nextTick, ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import ConversationList from '@/components/ConversationList.vue'
 import ChatMessage from '@/components/ChatMessage.vue'
@@ -9,6 +9,17 @@ import ReferencePanel from '@/components/ReferencePanel.vue'
 const chatStore = useChatStore()
 const messagesRef = ref<HTMLDivElement | null>(null)
 const showReferences = ref(false)
+
+const panelReferences = computed(() => {
+  if (chatStore.streamingReferences.length) return chatStore.streamingReferences
+  const lastAssistant = [...chatStore.messages].reverse().find((msg) => msg.role === 'assistant')
+  return (lastAssistant?.references ?? []).map((ref) => ({
+    docName: ref.docName,
+    segmentId: ref.docId,
+    content: ref.content ?? '',
+    pageNum: ref.pageNum,
+  }))
+})
 
 onMounted(() => {
   chatStore.fetchConversations()
@@ -111,6 +122,7 @@ const toggleReferences = () => {
               v-for="msg in chatStore.messages"
               :key="msg.messageId"
               :message="msg"
+              @show-references="showReferences = true"
             />
 
             <!-- Streaming message -->
@@ -120,6 +132,7 @@ const toggleReferences = () => {
               :streaming="true"
               :streaming-content="chatStore.streamingContent"
               :references="chatStore.streamingReferences"
+              @show-references="showReferences = true"
             />
           </template>
         </div>
@@ -138,7 +151,7 @@ const toggleReferences = () => {
     <Transition name="slide-left">
       <ReferencePanel
         v-if="showReferences && chatStore.currentConvId"
-        :sources="chatStore.streamingReferences"
+        :sources="panelReferences"
         @close="showReferences = false"
       />
     </Transition>

@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useKnowledgeStore } from '@/stores/knowledge'
 import { useDocumentStore } from '@/stores/document'
+import { useChatStore } from '@/stores/chat'
 import { ElMessageBox } from 'element-plus'
 import UploadZone from '@/components/UploadZone.vue'
 import DocStatusTag from '@/components/DocStatusTag.vue'
@@ -11,6 +12,7 @@ const route = useRoute()
 const router = useRouter()
 const kbStore = useKnowledgeStore()
 const docStore = useDocumentStore()
+const chatStore = useChatStore()
 
 const kbId = route.params.kbId as string
 const pageNum = ref(1)
@@ -57,6 +59,11 @@ const handlePageChange = async (page: number) => {
   pageNum.value = page
   await docStore.fetchDocList(kbId, { pageNum: page, pageSize: 15 })
 }
+
+const handleChat = async () => {
+  await chatStore.createConversation(kbId, currentKB.value?.name)
+  router.push({ name: 'chat' })
+}
 </script>
 
 <template>
@@ -71,6 +78,10 @@ const handlePageChange = async (page: number) => {
           <span class="page-subtitle" v-if="currentKB?.description">{{ currentKB.description }}</span>
         </div>
       </div>
+      <el-button type="primary" @click="handleChat">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8L14 2L8 14L7 9L2 8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        开始对话
+      </el-button>
     </header>
 
     <div class="view-body">

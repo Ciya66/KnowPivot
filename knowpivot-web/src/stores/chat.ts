@@ -83,7 +83,8 @@ export const useChatStore = defineStore('chat', () => {
             references: streamingReferences.value.map((s) => ({
               docId: s.segmentId,
               docName: s.docName,
-              pageNum: 0,
+              pageNum: s.pageNum ?? 0,
+              content: s.content,
             })),
             createTime: new Date().toISOString(),
           }
@@ -116,6 +117,12 @@ export const useChatStore = defineStore('chat', () => {
         messageId: `partial-${Date.now()}`,
         role: 'assistant',
         content: streamingContent.value,
+        references: streamingReferences.value.map((s) => ({
+          docId: s.segmentId,
+          docName: s.docName,
+          pageNum: s.pageNum ?? 0,
+          content: s.content,
+        })),
         createTime: new Date().toISOString(),
       }
       messages.value.push(assistantMsg)
