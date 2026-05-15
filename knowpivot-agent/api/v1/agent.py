@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from schema.request import AgentRunRequest
-from schema.response import AgentResponse, SourceReference as ResponseSourceReference
+from schema.request import AgentRunRequest, GenerateTitleRequest
+from schema.response import AgentResponse, SourceReference as ResponseSourceReference, GenerateTitleResponse
 from fastapi.responses import StreamingResponse
 from infrastructure.config import settings
 from openai import AsyncOpenAI
@@ -14,6 +14,16 @@ openai_client = AsyncOpenAI(
     api_key=settings.OPENAI_API_KEY,
     base_url=settings.OPENAI_BASE_URL
 )
+
+# 生成标题的系统提示词
+TITLE_GENERATION_SYSTEM_PROMPT = """你是一个专业的对话标题生成助手。请根据用户的第一条消息，生成一个简洁、准确的对话标题。
+
+要求：
+1. 标题长度控制在 10-30 个字符之间
+2. 准确概括用户的核心意图或问题
+3. 使用中文
+4. 不要包含标点符号（除非是特殊必要）
+5. 直接返回标题内容，不要有其他说明文字"""
 
 
 def _sse(event: str, **kwargs) -> str:
@@ -116,3 +126,39 @@ async def run_agent(request: AgentRunRequest):
         event_stream(),
         media_type="text/event-stream"
     )
+
+
+@router.post("/generate-title", response_model=GenerateTitleResponse)
+async def generate_title(request: GenerateTitleRequest):
+    """
+    根据用户第一条消息生成对话标题
+    """
+    try:
+        messages = [
+            {"role": "system", "content": TITLE_GENERATION_SYSTEM_PROMPT},
+            {"role": "user", "content": request.userMessage}
+        ]
+        
+        response = await openai_client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            messages=messages,
+            stream=False,
+            temperature=0.7
+        )
+        
+        title = response.choices[0].message.content.strip()
+        
+        # 简单的兜底处理
+        if not title or len(title) < 2:
+            title = "新对话"
+        
+        return GenerateTitleResponse(
+            title=title,
+            success=True
+        )
+    except Exception as e:
+        return GenerateTitleResponse(
+            title="新对话",
+            success=False,
+            errorMessage=str(e)
+        )

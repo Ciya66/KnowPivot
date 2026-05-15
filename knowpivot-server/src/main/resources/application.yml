@@ -103,13 +103,13 @@ knowpivot:
     datacenter-id: 1
   # Redis Vector Store
   vector:
-    dimension: 1536
+    dimension: 1024
     distance-metric: COSINE
   # Embedding Service (OpenAI 兼容)
   embedding:
     base-url: http://localhost:8001
     api-key:
-    model: text-embedding-3-small
+    model: qwen3-embedding:0.6b
 
 # ==================== Kafka Topics ====================
 kafka:

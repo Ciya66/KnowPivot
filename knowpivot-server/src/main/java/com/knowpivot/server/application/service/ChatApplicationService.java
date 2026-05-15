@@ -107,6 +107,10 @@ public class ChatApplicationService {
         conversationCache.appendMessage(conversation.getId(),
                 new AgentContext.ChatMessage("user", request.getContent()));
 
+        // 检查是否是第一次对话（用于判断是否需要生成标题）
+        long messageCount = messageRepository.countByConversationId(conversation.getId());
+        boolean isFirstMessage = messageCount <= 1; // 因为刚刚保存了用户消息
+
         // 3. 预扣 Token（按消息长度估算），done 事件到达后按实际值调整
         long estimatedTokens = Math.max(100, request.getContent().length() * 2);
         tokenDomainService.deductToken(userId, estimatedTokens, conversation.getId().toString());
@@ -115,10 +119,17 @@ public class ChatApplicationService {
         AgentContext context = buildAgentContext(conversation);
 
         // 5. 调用 AI 网关
+        StringBuilder fullContent = new StringBuilder(); // 完整回复
+
         return agentGateway.chat(context, request.getContent())
                 .doOnNext(response -> {
+                    if ("message".equals(response.getEvent()) && response.getDelta() != null) {
+                        fullContent.append(response.getDelta());
+                    }
+
                     if ("done".equals(response.getEvent())) {
-                        handleDoneEvent(conversation, response, userId, estimatedTokens);
+                        handleDoneEvent(conversation, response, userId, estimatedTokens,
+                                isFirstMessage, request.getContent(), fullContent.toString());
                     }
                 })
                 .doOnError(e -> {
@@ -207,14 +218,15 @@ public class ChatApplicationService {
     }
 
     private void handleDoneEvent(Conversation conversation, AgentResponse response,
-                                 Long userId, long estimatedTokens) {
+                                 Long userId, long estimatedTokens,
+                                 boolean isFirstMessage, String userMessage, String fullContent) {
         try {
             // 保存 AI 回复
             Message aiMessage = Message.builder()
                     .id(idGenerator.nextId())
                     .conversationId(conversation.getId())
                     .role(MessageRole.ASSISTANT)
-                    .content("")
+                    .content(fullContent)
                     .tokenCount(response.getTokenCount() != null ? response.getTokenCount() : 0)
                     .createdAt(LocalDateTime.now())
                     .build();
@@ -224,6 +236,11 @@ public class ChatApplicationService {
             conversationCache.appendMessage(conversation.getId(),
                     new AgentContext.ChatMessage("assistant", aiMessage.getContent()));
             conversationRepository.updateById(conversation);
+
+            // 如果是第一次消息，异步生成标题
+            if (isFirstMessage) {
+                asyncGenerateTitle(conversation.getId(), userMessage);
+            }
 
             // 调整 Token：实际消耗与预扣的差额
             long actualTokens = response.getTokenCount() != null ? response.getTokenCount() : 0;
@@ -243,6 +260,25 @@ public class ChatApplicationService {
             } catch (Exception refundEx) {
                 log.error("Token 回退失败: userId={}", userId, refundEx);
             }
+        }
+    }
+
+    //    @Async("asyncExecutor")
+    public void asyncGenerateTitle(Long conversationId, String userMessage) {
+        log.info("Start generating title for conversation: {}", conversationId);
+        try {
+            agentGateway.generateTitle(userMessage)
+                    .doOnNext(title -> {
+                        log.info("Updating conversation title: conversationId={}, title={}", conversationId, title);
+                        Conversation conversation = conversationRepository.findById(conversationId);
+                        if (conversation != null) {
+                            conversation.updateTitle(title);
+                            conversationRepository.updateById(conversation);
+                        }
+                    })
+                    .subscribe();
+        } catch (Exception e) {
+            log.error("Failed to generate title for conversation: {}", conversationId, e);
         }
     }
 }

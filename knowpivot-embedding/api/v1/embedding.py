@@ -18,7 +18,7 @@ async def create_embeddings(request: EmbeddingRequest):
 
     payload = {
         "model": request.model,
-        "prompt": request.input[0],
+        "input": request.input,
         "dimensions": settings.EMBEDDING_DIMENSION,
     }
 

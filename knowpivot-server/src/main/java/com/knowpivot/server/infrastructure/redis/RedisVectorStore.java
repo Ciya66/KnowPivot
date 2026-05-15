@@ -1,11 +1,12 @@
 package com.knowpivot.server.infrastructure.redis;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import redis.clients.jedis.JedisPooled;
-import redis.clients.jedis.args.Rawable;
 import redis.clients.jedis.commands.ProtocolCommand;
 import redis.clients.jedis.exceptions.JedisDataException;
 import redis.clients.jedis.params.ScanParams;
@@ -13,6 +14,7 @@ import redis.clients.jedis.resps.ScanResult;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,9 +28,11 @@ import java.util.List;
 @ConfigurationProperties(prefix = "knowpivot.vector")
 public class RedisVectorStore {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final JedisPooled jedis;
 
-    private int dimension = 1536;
+    private int dimension = 1024;
     private String distanceMetric = "COSINE";
 
     public RedisVectorStore() {
@@ -39,27 +43,37 @@ public class RedisVectorStore {
 
     private static class FtCreateCommand implements ProtocolCommand {
         @Override
-        public byte[] getRaw() { return "FT.CREATE".getBytes(); }
+        public byte[] getRaw() {
+            return "FT.CREATE".getBytes();
+        }
     }
 
     private static class FtSearchCommand implements ProtocolCommand {
         @Override
-        public byte[] getRaw() { return "FT.SEARCH".getBytes(); }
+        public byte[] getRaw() {
+            return "FT.SEARCH".getBytes();
+        }
     }
 
     private static class FtDropIndexCommand implements ProtocolCommand {
         @Override
-        public byte[] getRaw() { return "FT.DROPINDEX".getBytes(); }
+        public byte[] getRaw() {
+            return "FT.DROPINDEX".getBytes();
+        }
     }
 
     private static class FtInfoCommand implements ProtocolCommand {
         @Override
-        public byte[] getRaw() { return "FT.INFO".getBytes(); }
+        public byte[] getRaw() {
+            return "FT.INFO".getBytes();
+        }
     }
 
     private static class JsonSetCommand implements ProtocolCommand {
         @Override
-        public byte[] getRaw() { return "JSON.SET".getBytes(); }
+        public byte[] getRaw() {
+            return "JSON.SET".getBytes();
+        }
     }
 
     // ==================== 索引管理 ====================
@@ -89,9 +103,9 @@ public class RedisVectorStore {
                 "$.docId", "AS", "docId", "TAG",
                 "$.pageNum", "AS", "pageNum", "NUMERIC",
                 "$.embedding", "AS", "embedding", "VECTOR", "HNSW", "6",
-                    "TYPE", "FLOAT32",
-                    "DIM", String.valueOf(dimension),
-                    "DISTANCE_METRIC", distanceMetric
+                "TYPE", "FLOAT32",
+                "DIM", String.valueOf(dimension),
+                "DISTANCE_METRIC", distanceMetric
         );
 
         log.info("向量索引创建成功: indexName={}, dim={}", indexName, dimension);
@@ -160,60 +174,109 @@ public class RedisVectorStore {
      */
     @SuppressWarnings("unchecked")
     public List<VectorSearchResult> searchSimilar(String indexName, float[] queryVector,
-                                                   int topK, double similarityThreshold) {
+                                                  int topK, double similarityThreshold) {
         byte[] vecParam = floatArrayToBytes(queryVector);
+        log.info("[RAG-2] FT.SEARCH 请求: indexName={}, queryVecBytes={}, topK={}, threshold={}",
+                indexName, vecParam.length, topK, similarityThreshold);
 
         // FT.SEARCH <idx> "*=>[KNN <topK> @embedding $vec AS score]"
         //   PARAMS 2 vec <bytes>
+        //   WITHSCORES  ← 必须显式声明，否则 score 可能不出现在 RETURN 字段中
         //   SORTBY score ASC
         //   DIALECT 2
-        Object raw = jedis.sendCommand(new FtSearchCommand(),
-                indexName,
-                "*=>[KNN " + topK + " @embedding $vec AS score]",
-                "PARAMS", "2", "vec", new String(vecParam, java.nio.charset.StandardCharsets.ISO_8859_1),
-                "SORTBY", "score", "ASC",
-                "LIMIT", "0", String.valueOf(topK),
-                "DIALECT", "2"
+        Object raw = jedis.sendCommand(
+                new FtSearchCommand(),
+                indexName.getBytes(StandardCharsets.UTF_8),
+                ("*=>[KNN " + topK + " @embedding $vec AS score]").getBytes(StandardCharsets.UTF_8),
+                "PARAMS".getBytes(StandardCharsets.UTF_8),
+                "2".getBytes(StandardCharsets.UTF_8),
+                "vec".getBytes(StandardCharsets.UTF_8),
+                vecParam,
+                "WITHSCORES".getBytes(StandardCharsets.UTF_8),
+                "SORTBY".getBytes(StandardCharsets.UTF_8),
+                "score".getBytes(StandardCharsets.UTF_8),
+                "ASC".getBytes(StandardCharsets.UTF_8),
+                "LIMIT".getBytes(StandardCharsets.UTF_8),
+                "0".getBytes(StandardCharsets.UTF_8),
+                String.valueOf(topK).getBytes(StandardCharsets.UTF_8),
+                "DIALECT".getBytes(StandardCharsets.UTF_8),
+                "2".getBytes(StandardCharsets.UTF_8)
         );
 
-        // 解析 RESP 响应: [total, key1, [field, val, ...], key2, [...], ...]
+        // 解析 RESP 响应（WITHSCORES 格式）:
+        // [total, key1, score1, [field, val, ...], key2, score2, [field, val, ...], ...]
         List<Object> response = (List<Object>) raw;
         if (response == null || response.isEmpty()) {
+            log.info("[RAG-2] FT.SEARCH 响应: null 或空");
             return new ArrayList<>();
         }
 
         long total = ((Number) response.get(0)).longValue();
-        List<VectorSearchResult> results = new ArrayList<>();
+        log.info("[RAG-2] FT.SEARCH 响应: total={}, respSize={}", total, response.size());
+
+        if (total == 0) {
+            log.info("[RAG-2] 索引 {} 中无匹配文档", indexName);
+            return new ArrayList<>();
+        }
 
         // COSINE distance ∈ [0,2]，score = distance，similarity = 1 - distance/2
         double maxDistance = 2.0 * (1.0 - similarityThreshold);
+        List<VectorSearchResult> results = new ArrayList<>();
 
-        for (int i = 1; i + 1 < response.size(); i += 2) {
-            String fullKey = new String((byte[]) response.get(i));
-            List<Object> fields = (List<Object>) response.get(i + 1);
+        // WITHSCORES: 每个结果 3 个元素 [key, redisScore, [fields...]]
+        // RediSearch JSON 返回中，向量距离在 fields 的 "score" 字段，文档正文在 "$" 根 JSON 字段。
+        for (int i = 1; i + 2 < response.size(); i += 3) {
+            String fullKey = new String((byte[]) response.get(i), StandardCharsets.UTF_8);
+            String redisScore = asString(response.get(i + 1));
+            List<Object> fields = (List<Object>) response.get(i + 2);
+
+            log.info("[RAG-3] 解析结果: key={}, redisScore={}, fieldsSize={}",
+                    fullKey, redisScore, fields != null ? fields.size() : 0);
 
             String content = null, kbId = null, docId = null, pageNumStr = null;
-            Double score = null;
+            Double distance = null;
 
-            // 解析 field-value 对
-            for (int j = 0; j + 1 < fields.size(); j += 2) {
-                String field = asString(fields.get(j));
-                String value = asString(fields.get(j + 1));
-                switch (field) {
-                    case "content" -> content = value;
-                    case "kbId" -> kbId = value;
-                    case "docId" -> docId = value;
-                    case "pageNum" -> pageNumStr = value;
-                    case "score" -> score = Double.parseDouble(value);
+            if (fields != null) {
+                for (int j = 0; j + 1 < fields.size(); j += 2) {
+                    String field = asString(fields.get(j));
+                    String value = asString(fields.get(j + 1));
+                    log.info("[RAG-3]   field={}, valuePreview={}", field,
+                            value != null && value.length() > 80 ? value.substring(0, 80) + "..." : value);
+                    switch (field) {
+                        case "content" -> content = value;
+                        case "kbId" -> kbId = value;
+                        case "docId" -> docId = value;
+                        case "pageNum" -> pageNumStr = value;
+                        case "score" -> distance = Double.parseDouble(value);
+                        case "$" -> {
+                            JsonNode root = parseJson(value);
+                            if (root != null) {
+                                content = textOrDefault(root, "content", content);
+                                kbId = textOrDefault(root, "kbId", kbId);
+                                docId = textOrDefault(root, "docId", docId);
+                                pageNumStr = textOrDefault(root, "pageNum", pageNumStr);
+                            }
+                        }
+                        default -> log.debug("[RAG-3]   未识别字段: {}", field);
+                    }
                 }
             }
 
-            if (score == null) continue;
+            if (distance == null) {
+                log.warn("[RAG-3] 跳过结果：未解析到向量 score 字段，key={}", fullKey);
+                continue;
+            }
 
-            // 相似度过滤: score 是余弦距离，越小越相似
-            if (score > maxDistance) continue;
+            // 相似度过滤
+            if (distance > maxDistance) {
+                log.info("[RAG-4] 过滤: distance={} > maxDistance={}", distance, maxDistance);
+                continue;
+            }
 
-            double similarity = 1.0 - score / 2.0;
+            double similarity = 1.0 - distance / 2.0;
+            log.info("[RAG-4] 通过: distance={}, similarity={}, contentNull={}, docIdNull={}, pageNumNull={}",
+                    distance, String.format("%.4f", similarity), content == null, docId == null, pageNumStr == null);
+
             results.add(VectorSearchResult.builder()
                     .vectorId(extractVectorId(fullKey, indexName))
                     .content(content)
@@ -224,7 +287,8 @@ public class RedisVectorStore {
                     .build());
         }
 
-        log.debug("向量检索完成: index={}, total={}, filtered={}", indexName, total, results.size());
+        log.info("[RAG-2] 检索完成: index={}, total={}, threshold={}, filtered={}",
+                indexName, total, similarityThreshold, results.size());
         return results;
     }
 
@@ -303,6 +367,22 @@ public class RedisVectorStore {
     private String extractVectorId(String fullKey, String indexName) {
         String prefix = indexName + ":";
         return fullKey.startsWith(prefix) ? fullKey.substring(prefix.length()) : fullKey;
+    }
+
+    private JsonNode parseJson(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return OBJECT_MAPPER.readTree(json);
+        } catch (Exception e) {
+            log.warn("[RAG-3] Redis JSON 解析失败: {}", json.length() > 120 ? json.substring(0, 120) + "..." : json, e);
+            return null;
+        }
+    }
+
+    private String textOrDefault(JsonNode node, String field, String defaultValue) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) return defaultValue;
+        return value.asText();
     }
 
     private String asString(Object obj) {

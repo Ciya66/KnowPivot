@@ -31,7 +31,7 @@ public class MessageRepositoryImpl implements MessageRepository {
     public List<Message> findByConversationId(Long conversationId, int pageNum, int pageSize) {
         LambdaQueryWrapper<MessagePO> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(MessagePO::getConversationId, conversationId)
-                .orderByDesc(MessagePO::getCreatedAt);
+                .orderByAsc(MessagePO::getCreatedAt);
         Page<MessagePO> page = messageMapper.selectPage(
                 new Page<>(pageNum, pageSize), wrapper);
         return page.getRecords().stream()
