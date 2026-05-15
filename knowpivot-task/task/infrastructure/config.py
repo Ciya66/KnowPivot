@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = ""
     EMBEDDING_BASE_URL: str = "http://localhost:8001/v1"
     EMBEDDING_API_KEY: str = ""
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_MODEL: str = "qwen3-embedding:0.6b"
     EMBEDDING_DIMENSION: int = 1536
     SERVER_API_URL: str = "http://localhost:8080"
 
