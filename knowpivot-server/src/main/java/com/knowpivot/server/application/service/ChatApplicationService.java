@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -120,6 +121,7 @@ public class ChatApplicationService {
 
         // 5. 调用 AI 网关
         StringBuilder fullContent = new StringBuilder(); // 完整回复
+        List<AgentResponse.SourceReference> collectedReferences = new ArrayList<>(); // 引用
 
         return agentGateway.chat(context, request.getContent())
                 .doOnNext(response -> {
@@ -127,9 +129,13 @@ public class ChatApplicationService {
                         fullContent.append(response.getDelta());
                     }
 
+                    if ("references".equals(response.getEvent()) && response.getSources() != null) {
+                        collectedReferences.addAll(response.getSources());
+                    }
+
                     if ("done".equals(response.getEvent())) {
                         handleDoneEvent(conversation, response, userId, estimatedTokens,
-                                isFirstMessage, request.getContent(), fullContent.toString());
+                                isFirstMessage, request.getContent(), fullContent.toString(), collectedReferences);
                     }
                 })
                 .doOnError(e -> {
@@ -219,14 +225,27 @@ public class ChatApplicationService {
 
     private void handleDoneEvent(Conversation conversation, AgentResponse response,
                                  Long userId, long estimatedTokens,
-                                 boolean isFirstMessage, String userMessage, String fullContent) {
+                                 boolean isFirstMessage, String userMessage,
+                                 String fullContent, List<AgentResponse.SourceReference> collectedReferences) {
         try {
+
+            List<Message.Reference> references = collectedReferences.stream()
+                    .map(sourceReference -> Message.Reference.builder()
+                            .docId(sourceReference.getDocName())
+                            .docName(sourceReference.getDocName())
+                            .segmentId(sourceReference.getSegmentId())
+                            .content(sourceReference.getContent())
+                            .pageNum(sourceReference.getPageNum())
+                            .build())
+                    .toList();
+            
             // 保存 AI 回复
             Message aiMessage = Message.builder()
                     .id(idGenerator.nextId())
                     .conversationId(conversation.getId())
                     .role(MessageRole.ASSISTANT)
                     .content(fullContent)
+                    .references(references)
                     .tokenCount(response.getTokenCount() != null ? response.getTokenCount() : 0)
                     .createdAt(LocalDateTime.now())
                     .build();

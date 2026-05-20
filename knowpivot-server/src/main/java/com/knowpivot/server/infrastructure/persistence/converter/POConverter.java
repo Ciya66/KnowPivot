@@ -204,7 +204,8 @@ public class POConverter {
                 .role(toEnum(MessageRole.class, po.getRole()))
                 .content(po.getContent())
                 .tokenCount(po.getTokenCount())
-                .references(fromJsonList(po.getReferences(), new TypeReference<List<Message.Reference>>() {}))
+                .references(fromJsonList(po.getReferences(), new TypeReference<List<Message.Reference>>() {
+                }))
                 .feedback(po.getFeedback() != null ? toEnum(FeedbackType.class, po.getFeedback()) : null)
                 .createdAt(po.getCreatedAt())
                 .build();
