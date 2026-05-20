@@ -468,11 +468,11 @@ uv run pytest        # 运行测试
 
 | 路径 | 页面 | 功能 |
 |------|------|------|
-| `/` | Dashboard | 仪表盘，概览面板 |
-| `/knowledge` | Knowledge | 知识库列表与管理 |
-| `/agent` | Agent | AI 对话界面 |
-| `/documents` | Documents | 文档管理 |
-| `/settings` | Settings | 用户设置 |
+| `/login` | LoginView | 用户登录 |
+| `/` | ChatView | AI 对话界面（SSE 流式） |
+| `/knowledge` | KnowledgeView | 知识库列表与管理 |
+| `/knowledge/:kbId` | KnowledgeDetailView | 知识库详情与文档管理 |
+| `/settings` | SettingsView | 用户设置 |
 
 ---
 
@@ -512,11 +512,12 @@ uv run pytest        # 运行测试
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `KAFKA_BROKER` | `localhost:9092` | Kafka 地址 |
-| `REDIS_HOST` | `localhost` | Redis 地址 |
-| `REDIS_PORT` | `6379` | Redis 端口 |
 | `MINIO_ENDPOINT` | `localhost:9000` | MinIO 地址 |
 | `MINIO_ACCESS_KEY` | — | MinIO Access Key |
 | `MINIO_SECRET_KEY` | — | MinIO Secret Key |
+| `EMBEDDING_BASE_URL` | `http://localhost:8001/v1` | Embedding 服务地址 |
+| `EMBEDDING_MODEL` | `qwen3-embedding:0.6b` | Embedding 模型 |
+| `SERVER_API_URL` | `http://localhost:8080` | Java Server 回调地址 |
 
 ---
 
@@ -569,13 +570,17 @@ docs: 更新API接口文档
 - [x] 前端完整 UI 实现（三栏布局 / 5 个页面）
 - [x] Python AI Agent 服务（FastAPI + SSE 流式）
 - [x] 文档解析 Worker（Kafka 消费 + 多格式文本提取）
-- [ ] AI Agent 接入真实 LLM（OpenAI / 兼容接口）
-- [ ] 文档分块 + 向量化 + Redis 索引完整链路
-- [ ] 前后端真实 API 联调
+- [x] AI Agent 接入真实 LLM（DeepSeek / OpenAI 兼容接口，支持流式 SSE）
+- [x] 文档分块 + Embedding 生成 + 索引回调完整链路
+- [x] 统一 Embedding 代理服务（OpenAI 兼容接口，支持模型切换）
+- [x] 标题自动生成功能
+- [x] 前后端真实 API 联调（SSE 流式、引用溯源、URL 路径修正）
+- [x] 引用来源面板与知识库对话入口
 - [ ] Docker 容器化部署
 - [ ] CI/CD 自动化流水线
 - [ ] 文档版本管理与历史对比
 - [ ] 多模型切换与降级策略
+- [ ] 提示词模板管理优化
 
 ---
 
