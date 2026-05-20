@@ -49,7 +49,7 @@ public class DefaultAgentGateway implements AgentGateway {
                         context.getIndexName(),
                         query,
                         5,
-                        0.0
+                        0.7
                 );
 
                 references = hits.stream()
